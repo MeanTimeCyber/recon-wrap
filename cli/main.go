@@ -10,6 +10,8 @@ import (
 	"github.com/asaskevich/govalidator"
 )
 
+// main parses CLI input, orchestrates subdomain and website enumeration,
+// and writes the final markdown report for the selected domain.
 func main() {
 	// setup logging
 	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
@@ -61,6 +63,8 @@ func main() {
 	slog.Info("Fin.")
 }
 
+// isValidDomain performs lightweight input validation for target domains,
+// requiring a dotted hostname and a valid DNS name format.
 func isValidDomain(domain string) bool {
 	domain = strings.TrimSpace(domain)
 	if domain == "" {
