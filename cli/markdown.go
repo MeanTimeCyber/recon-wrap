@@ -8,25 +8,34 @@ import (
 
 // writeWebsiteDetailsMarkdown renders website details and writes them to a
 // markdown file at the provided path.
-func writeWebsiteDetailsMarkdown(filePath string, results []WebsiteDetails) error {
-	markdown := renderWebsiteDetailsMarkdown(results)
+func writeWebsiteDetailsMarkdown(filePath string, inputDomain string, results []WebsiteDetails) error {
+	markdown := renderWebsiteDetailsMarkdown(inputDomain, results)
 	return os.WriteFile(filePath, []byte(markdown), 0644)
 }
 
 // renderWebsiteDetailsMarkdown builds a report with a concise summary table
 // followed by per-site detail tables for all discovered endpoints.
-func renderWebsiteDetailsMarkdown(results []WebsiteDetails) string {
+func renderWebsiteDetailsMarkdown(inputDomain string, results []WebsiteDetails) string {
 	var b strings.Builder
+	orderedResults := prioritizeInputDomainResults(inputDomain, results)
 
 	b.WriteString("# Discovered Website Details\n\n")
+	b.WriteString("Input domain: **")
+	b.WriteString(escapeMarkdownCell(inputDomain))
+	b.WriteString("**\n\n")
 
 	b.WriteString("## Summary\n\n")
 	b.WriteString("| Input | URL | Status | Title | Server | Technologies |\n")
 	b.WriteString("|---|---|---:|---|---|---|\n")
 
-	for _, result := range results {
+	for _, result := range orderedResults {
+		inputLabel := escapeMarkdownCell(result.Input)
+		if isInputDomainResult(inputDomain, result) {
+			inputLabel = "**" + inputLabel + " (input)"
+		}
+
 		b.WriteString("| ")
-		b.WriteString(escapeMarkdownCell(result.Input))
+		b.WriteString(inputLabel)
 		b.WriteString(" | ")
 		b.WriteString(escapeMarkdownCell(result.URL))
 		b.WriteString(" | ")
@@ -42,9 +51,16 @@ func renderWebsiteDetailsMarkdown(results []WebsiteDetails) string {
 
 	b.WriteString("\n## Detailed Results\n")
 
-	for i, result := range results {
-		b.WriteString("\n### Site ")
-		b.WriteString(strconv.Itoa(i + 1))
+	for _, result := range orderedResults {
+		b.WriteString("\n### ")
+		if isInputDomainResult(inputDomain, result) {
+			b.WriteString("Input Domain")
+		} else {
+			b.WriteString("Subdomain")
+		}
+		b.WriteString(": ")
+		b.WriteString(escapeMarkdownCell(result.URL))
+		b.WriteString(" details\n\n")
 		b.WriteString("\n\n")
 		b.WriteString("| Field | Value |\n")
 		b.WriteString("|---|---|\n")
@@ -123,6 +139,31 @@ func renderWebsiteDetailsMarkdown(results []WebsiteDetails) string {
 	}
 
 	return b.String()
+}
+
+// prioritizeInputDomainResults returns a new slice where entries belonging to
+// the input domain are placed first while preserving original relative order.
+func prioritizeInputDomainResults(inputDomain string, results []WebsiteDetails) []WebsiteDetails {
+	prioritized := make([]WebsiteDetails, 0, len(results))
+
+	for _, result := range results {
+		if isInputDomainResult(inputDomain, result) {
+			prioritized = append(prioritized, result)
+		}
+	}
+
+	for _, result := range results {
+		if !isInputDomainResult(inputDomain, result) {
+			prioritized = append(prioritized, result)
+		}
+	}
+
+	return prioritized
+}
+
+// isInputDomainResult reports whether the result maps to the root input domain.
+func isInputDomainResult(inputDomain string, result WebsiteDetails) bool {
+	return strings.EqualFold(strings.TrimSpace(result.Input), strings.TrimSpace(inputDomain))
 }
 
 // escapeMarkdownCell sanitizes table cell values by escaping separators,

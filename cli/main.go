@@ -53,7 +53,7 @@ func main() {
 
 	reportPath := *inputDomain + "_websites-" + time.Now().UTC().Format("20060102-150405") + ".md"
 
-	if err := writeWebsiteDetailsMarkdown(reportPath, details); err != nil {
+	if err := writeWebsiteDetailsMarkdown(reportPath, *inputDomain, details); err != nil {
 		slog.Error("error writing markdown website details", "error", err)
 		os.Exit(1)
 	}
