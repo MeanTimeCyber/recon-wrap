@@ -16,6 +16,7 @@ func main() {
 
 	// parse command line arguments, validate input
 	inputDomain := flag.String("i", "", "Target domain (e.g. example.com)")
+	disableLiveURLPrint := flag.Bool("quiet-httpx", false, "Disable live URL output while httpx is running")
 	flag.Parse()
 
 	if !isValidDomain(*inputDomain) {
@@ -35,6 +36,15 @@ func main() {
 	}
 
 	slog.Info("subdomain discovery complete", "count", len(subdomains))
+
+	// find website details for each subdomain
+	_, err = getWebsiteDetails(subdomains, *disableLiveURLPrint, *inputDomain)
+
+	if err != nil {
+		slog.Error("error finding website details", "error", err)
+		os.Exit(1)
+	}
+
 	slog.Info("Fin.")
 }
 
