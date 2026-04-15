@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"log/slog"
 
+	"github.com/projectdiscovery/dnsx/libs/dnsx"
 	"github.com/projectdiscovery/subfinder/v2/pkg/runner"
 )
 
@@ -25,7 +27,7 @@ func findSubdomains(domain string) ([]string, error) {
 
 	// configure the options
 	subfinderOpts := &runner.Options{
-		Threads:            10, // Thread controls the number of threads to use for active enumerations
+		Threads:            40, // Thread controls the number of threads to use for active enumerations
 		Timeout:            30, // Timeout is the seconds to wait for sources to respond
 		MaxEnumerationTime: 10, // MaxEnumerationTime is the maximum amount of time in mins to wait for enumeration
 		Silent:             true,
@@ -67,6 +69,13 @@ func findSubdomains(domain string) ([]string, error) {
 		subdomains = append(subdomains, subdomain)
 	}
 
+	liveSubdomains, err := filterLiveSubdomainsWithDNSX(subdomains)
+	if err != nil {
+		slog.Warn("dnsx live-address filtering failed, returning unfiltered subdomains", "error", err)
+	} else {
+		subdomains = liveSubdomains
+	}
+
 	sort.Strings(subdomains)
 	slog.Info("subdomain enumeration complete", "domain", domain, "count", len(subdomains))
 
@@ -105,4 +114,33 @@ func findProviderConfigPath() (string, bool) {
 
 	slog.Info("subfinder provider config found", "path", path)
 	return path, true
+}
+
+// filterLiveSubdomainsWithDNSX keeps only hostnames that resolve to at least
+// one DNS address using dnsx lookups.
+func filterLiveSubdomainsWithDNSX(subdomains []string) ([]string, error) {
+	if len(subdomains) == 0 {
+		return subdomains, nil
+	}
+
+	dnsxClient, err := dnsx.New(dnsx.Options{
+		MaxRetries: 2,
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize dnsx: %w", err)
+	}
+
+	live := make([]string, 0, len(subdomains))
+	for _, subdomain := range subdomains {
+		addresses, lookupErr := dnsxClient.Lookup(subdomain)
+		if lookupErr != nil || len(addresses) == 0 {
+			continue
+		}
+
+		live = append(live, subdomain)
+	}
+
+	slog.Info("dnsx filtering complete", "input", len(subdomains), "live", len(live))
+	return live, nil
 }
