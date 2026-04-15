@@ -4,7 +4,7 @@ go 1.25.9
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
-	github.com/bndr/gotabulate v1.1.2
+	github.com/projectdiscovery/dnsx v1.2.3
 	github.com/projectdiscovery/httpx v1.9.0
 	github.com/projectdiscovery/subfinder/v2 v2.13.0
 )
@@ -99,7 +99,6 @@ require (
 	github.com/projectdiscovery/cdncheck v1.2.26 // indirect
 	github.com/projectdiscovery/chaos-client v0.5.2 // indirect
 	github.com/projectdiscovery/clistats v0.1.1 // indirect
-	github.com/projectdiscovery/dnsx v1.2.3 // indirect
 	github.com/projectdiscovery/dsl v0.8.13 // indirect
 	github.com/projectdiscovery/fastdialer v0.5.4 // indirect
 	github.com/projectdiscovery/fdmax v0.0.4 // indirect
