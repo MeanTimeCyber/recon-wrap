@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
+	"strings"
 
 	customport "github.com/projectdiscovery/httpx/common/customports"
 	"github.com/projectdiscovery/httpx/runner"
@@ -63,10 +66,7 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 				slog.Info("first pass progress", "processed", firstPassProcessed, "good_targets", len(goodTargets))
 			}
 
-			target := result.URL
-			if target == "" {
-				target = result.Input
-			}
+			target := targetKey(result)
 
 			if isGoodStatusCode(result.StatusCode) && target != "" {
 				if _, exists := goodTargetsSet[target]; !exists {
@@ -155,12 +155,14 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 		for enriched := range enrichedByTargetCh {
 			secondPassProcessed++
 
-			target := enriched.URL
-			if target == "" {
-				target = enriched.Input
-			}
+			target := targetKey(enriched)
 			if target != "" {
-				enrichedByTarget[target] = enriched
+				existing, exists := enrichedByTarget[target]
+				if exists {
+					enrichedByTarget[target] = mergeWebsiteDetails(existing, enriched)
+				} else {
+					enrichedByTarget[target] = enriched
+				}
 			}
 
 			if secondPassProcessed%100 == 0 {
@@ -258,10 +260,7 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 	slog.Info("merge phase starting", "base_results", len(results), "enriched_targets", len(enrichedByTarget))
 	mergedResults := 0
 	for i, result := range results {
-		target := result.URL
-		if target == "" {
-			target = result.Input
-		}
+		target := targetKey(result)
 
 		enriched, ok := enrichedByTarget[target]
 		if !ok {
@@ -336,4 +335,73 @@ func pickString(primary string, fallback string) string {
 	}
 
 	return fallback
+}
+
+func targetKey(details WebsiteDetails) string {
+	if details.URL != "" {
+		return details.URL
+	}
+
+	if details.FinalURL != "" {
+		return details.FinalURL
+	}
+
+	return details.Input
+}
+
+func writeWebsiteDetailsMarkdown(filePath string, results []WebsiteDetails) error {
+	markdown := renderWebsiteDetailsMarkdown(results)
+	return os.WriteFile(filePath, []byte(markdown), 0644)
+}
+
+func renderWebsiteDetailsMarkdown(results []WebsiteDetails) string {
+	var b strings.Builder
+
+	b.WriteString("# Discovered Website Details\n\n")
+	b.WriteString("| Input | URL | Final URL | Host | IP | Port | Status | Server | Technologies | CPE | JARM | ASN | Error |\n")
+	b.WriteString("|---|---|---|---|---|---:|---:|---|---|---|---|---|---|\n")
+
+	for _, result := range results {
+		b.WriteString("|")
+		b.WriteString(" ")
+		b.WriteString(escapeMarkdownCell(result.Input))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.URL))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.FinalURL))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.Host))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.HostIP))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.Port))
+		b.WriteString(" | ")
+		b.WriteString(strconv.Itoa(result.StatusCode))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.WebServer))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(strings.Join(result.Technologies, ", ")))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(strings.Join(result.CPE, ", ")))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.JarmHash))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.ASN))
+		b.WriteString(" | ")
+		b.WriteString(escapeMarkdownCell(result.Error))
+		b.WriteString(" |\n")
+	}
+
+	return b.String()
+}
+
+func escapeMarkdownCell(value string) string {
+	value = strings.ReplaceAll(value, "|", "\\|")
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+
+	return value
 }

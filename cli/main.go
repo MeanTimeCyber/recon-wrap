@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/asaskevich/govalidator"
 )
@@ -37,13 +38,25 @@ func main() {
 
 	slog.Info("subdomain discovery complete", "count", len(subdomains))
 
+	// add the root domain to the list of subdomains for website details lookup
+	subdomains = append(subdomains, *inputDomain)
+
 	// find website details for each subdomain
-	_, err = getWebsiteDetails(subdomains, *disableLiveURLPrint, *inputDomain)
+	details, err := getWebsiteDetails(subdomains, *disableLiveURLPrint, *inputDomain)
 
 	if err != nil {
 		slog.Error("error finding website details", "error", err)
 		os.Exit(1)
 	}
+
+	reportPath := *inputDomain + "_websites-" + time.Now().UTC().Format("20060102-150405") + ".md"
+
+	if err := writeWebsiteDetailsMarkdown(reportPath, details); err != nil {
+		slog.Error("error writing markdown website details", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("markdown output written", "path", reportPath, "count", len(details))
 
 	slog.Info("Fin.")
 }
