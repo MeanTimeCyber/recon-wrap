@@ -19,7 +19,7 @@ func main() {
 
 	// parse command line arguments, validate input
 	inputDomain := flag.String("i", "", "Target domain (e.g. example.com)")
-	disableLiveURLPrint := flag.Bool("quiet-httpx", false, "Disable live URL output while httpx is running")
+	disableLiveURLPrint := flag.Bool("quiet-httpx", true, "Disable live URL output while httpx is running")
 	flag.Parse()
 
 	if !isValidDomain(*inputDomain) {
