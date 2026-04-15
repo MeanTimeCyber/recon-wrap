@@ -43,7 +43,7 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 	ports := customport.CustomPorts{}
 
 	// Probe a broad set of common web ports in the initial sweep.
-	if err := ports.Set("80,81,88,3000,5000,7000,8000,8008,8080,8081,8088,8888,9000,9090,443,444,5443,6443,7443,8443,9443,10443"); err != nil {
+	if err := ports.Set("80,88,8000,8008,8080,8081,8088,8888,9000,9090,443,444,5443,6443,7443,8443,9443,10443"); err != nil {
 		return nil, fmt.Errorf("invalid custom ports: %w", err)
 	}
 
@@ -82,6 +82,8 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 	firstPassOptions := runner.Options{
 		Methods:            "GET",
 		InputTargetHost:    subdomains,
+		Threads:            100,
+		RateLimit:          300,
 		Silent:             true,
 		DisableStdout:      disableLiveURLPrint,
 		CustomPorts:        ports,
@@ -179,6 +181,8 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 		InputTargetHost:    goodTargets,
 		Silent:             true,
 		DisableStdout:      disableLiveURLPrint,
+		Threads:            40,
+		RateLimit:          100,
 		ExtractTitle:       true,
 		Location:           true,
 		StatusCode:         true,
