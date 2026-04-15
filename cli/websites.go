@@ -3,9 +3,6 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"os"
-	"strconv"
-	"strings"
 
 	customport "github.com/projectdiscovery/httpx/common/customports"
 	"github.com/projectdiscovery/httpx/runner"
@@ -18,7 +15,8 @@ type WebsiteDetails struct {
 	Host         string
 	HostIP       string
 	ASN          string
-	JarmHash     string
+	FavIconMMH3  string
+	FavIconMD5   string
 	StatusCode   int
 	Error        string
 	Port         string
@@ -37,11 +35,14 @@ type WebsiteDetails struct {
 	CNAMEs       []string
 }
 
+// getWebsiteDetails performs two-pass website probing: a broad first pass for
+// reachability and a focused second pass for deep enrichment on healthy targets.
 func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName string) ([]WebsiteDetails, error) {
 	slog.Info("Inspecting websites", "targets", len(subdomains))
 
 	ports := customport.CustomPorts{}
 
+	// Probe a broad set of common web ports in the initial sweep.
 	if err := ports.Set("80,81,88,3000,5000,7000,8000,8008,8080,8081,8088,8888,9000,9090,443,444,5443,6443,7443,8443,9443,10443"); err != nil {
 		return nil, fmt.Errorf("invalid custom ports: %w", err)
 	}
@@ -68,6 +69,7 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 
 			target := targetKey(result)
 
+			// Keep only healthy responses for expensive second-pass fingerprinting.
 			if isGoodStatusCode(result.StatusCode) && target != "" {
 				if _, exists := goodTargetsSet[target]; !exists {
 					goodTargetsSet[target] = struct{}{}
@@ -159,6 +161,7 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 			if target != "" {
 				existing, exists := enrichedByTarget[target]
 				if exists {
+					// Merge multiple callbacks for the same target without losing populated fields.
 					enrichedByTarget[target] = mergeWebsiteDetails(existing, enriched)
 				} else {
 					enrichedByTarget[target] = enriched
@@ -191,7 +194,6 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 		TLSProbe:           true,
 		HTTP2Probe:         true,
 		Favicon:            true,
-		Jarm:               true,
 		Asn:                true,
 		SniName:            sniName,
 		OnResult: func(r runner.Result) {
@@ -211,7 +213,8 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 				SNI:          r.SNI,
 				Host:         r.Host,
 				HostIP:       r.HostIP,
-				JarmHash:     r.JarmHash,
+				FavIconMMH3:  r.FavIconMMH3,
+				FavIconMD5:   r.FavIconMD5,
 				StatusCode:   r.StatusCode,
 				Port:         r.Port,
 				Title:        r.Title,
@@ -267,6 +270,7 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 			continue
 		}
 
+		// Overlay deep second-pass fingerprints onto first-pass baseline results.
 		results[i] = mergeWebsiteDetails(result, enriched)
 		mergedResults++
 	}
@@ -276,6 +280,8 @@ func getWebsiteDetails(subdomains []string, disableLiveURLPrint bool, sniName st
 	return results, nil
 }
 
+// isGoodStatusCode returns true for response codes considered worth deep
+// follow-up enrichment in the second pass.
 func isGoodStatusCode(statusCode int) bool {
 	if statusCode >= 200 && statusCode < 400 {
 		return true
@@ -284,12 +290,15 @@ func isGoodStatusCode(statusCode int) bool {
 	return statusCode == 401 || statusCode == 403
 }
 
+// mergeWebsiteDetails overlays enriched fields onto a baseline result while
+// preserving any already-populated values that enrichment did not improve.
 func mergeWebsiteDetails(base WebsiteDetails, enriched WebsiteDetails) WebsiteDetails {
 	base.SNI = pickString(enriched.SNI, base.SNI)
 	base.Host = pickString(enriched.Host, base.Host)
 	base.HostIP = pickString(enriched.HostIP, base.HostIP)
 	base.ASN = pickString(enriched.ASN, base.ASN)
-	base.JarmHash = pickString(enriched.JarmHash, base.JarmHash)
+	base.FavIconMMH3 = pickString(enriched.FavIconMMH3, base.FavIconMMH3)
+	base.FavIconMD5 = pickString(enriched.FavIconMD5, base.FavIconMD5)
 	base.Title = pickString(enriched.Title, base.Title)
 	base.Location = pickString(enriched.Location, base.Location)
 	base.FinalURL = pickString(enriched.FinalURL, base.FinalURL)
@@ -329,6 +338,7 @@ func mergeWebsiteDetails(base WebsiteDetails, enriched WebsiteDetails) WebsiteDe
 	return base
 }
 
+// pickString prefers a non-empty primary value and falls back otherwise.
 func pickString(primary string, fallback string) string {
 	if primary != "" {
 		return primary
@@ -337,7 +347,10 @@ func pickString(primary string, fallback string) string {
 	return fallback
 }
 
+// targetKey builds a stable endpoint key used to correlate records between scan
+// passes, preferring URL then final URL, then the original input target.
 func targetKey(details WebsiteDetails) string {
+	// Use a stable lookup key across passes to correlate the same endpoint.
 	if details.URL != "" {
 		return details.URL
 	}
@@ -347,61 +360,4 @@ func targetKey(details WebsiteDetails) string {
 	}
 
 	return details.Input
-}
-
-func writeWebsiteDetailsMarkdown(filePath string, results []WebsiteDetails) error {
-	markdown := renderWebsiteDetailsMarkdown(results)
-	return os.WriteFile(filePath, []byte(markdown), 0644)
-}
-
-func renderWebsiteDetailsMarkdown(results []WebsiteDetails) string {
-	var b strings.Builder
-
-	b.WriteString("# Discovered Website Details\n\n")
-	b.WriteString("| Input | URL | Final URL | Host | IP | Port | Status | Server | Technologies | CPE | JARM | ASN | Error |\n")
-	b.WriteString("|---|---|---|---|---|---:|---:|---|---|---|---|---|---|\n")
-
-	for _, result := range results {
-		b.WriteString("|")
-		b.WriteString(" ")
-		b.WriteString(escapeMarkdownCell(result.Input))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.URL))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.FinalURL))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.Host))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.HostIP))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.Port))
-		b.WriteString(" | ")
-		b.WriteString(strconv.Itoa(result.StatusCode))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.WebServer))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(strings.Join(result.Technologies, ", ")))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(strings.Join(result.CPE, ", ")))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.JarmHash))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.ASN))
-		b.WriteString(" | ")
-		b.WriteString(escapeMarkdownCell(result.Error))
-		b.WriteString(" |\n")
-	}
-
-	return b.String()
-}
-
-func escapeMarkdownCell(value string) string {
-	value = strings.ReplaceAll(value, "|", "\\|")
-	value = strings.ReplaceAll(value, "\n", " ")
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "-"
-	}
-
-	return value
 }
