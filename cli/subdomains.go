@@ -20,6 +20,8 @@ func findSubdomains(domain string) ([]string, error) {
 		Threads:            10, // Thread controls the number of threads to use for active enumerations
 		Timeout:            30, // Timeout is the seconds to wait for sources to respond
 		MaxEnumerationTime: 10, // MaxEnumerationTime is the maximum amount of time in mins to wait for enumeration
+		Silent:             true,
+
 		// ResultCallback: func(s *resolve.HostEntry) {
 		// callback function executed after each unique subdomain is found
 		// },
