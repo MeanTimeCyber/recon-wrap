@@ -1,5 +1,5 @@
 # Overview
-A Golang CLI tool to wrap the running of different recon tools from ProjectDiscovery.
+A Golang CLI tool to wrap the running of different recon tools from [ProjectDiscovery](https://github.com/projectdiscovery).
 
 # Current Functionality
 - Accepts a target domain via `-i` and validates it before running.
